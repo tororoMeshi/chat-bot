@@ -1,0 +1,3 @@
+# 秘密ファイルやローカル向けスクリプトは配布物から除外
+.env.secret export-ignore
+create-secret.sh export-ignore
