@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: chat-bot
+  namespace: chat-bot
+  name: chat-bot
+spec:
+  type: ClusterIP
+  selector:
+    app: chat-bot
+  ports:
+    - port: 3005
+      targetPort: 3000
+      protocol: TCP

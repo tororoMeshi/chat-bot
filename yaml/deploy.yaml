@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-bot
+  labels:
+    app: chat-bot
+  namespace: chat-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chat-bot
+  template:
+    metadata:
+      labels:
+        app: chat-bot
+    spec:
+      containers:
+        - image: tororomeshi/chat-bot:latest
+          name: chat-bot
+          imagePullPolicy: Always
+          tty: true
+          env:
+          - name: GEMINI_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: chat-bot-secrets
+                key: gemini_api_key
+          - name: DISCORD_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: chat-bot-secrets
+                key: discord_token
+          - name: GEMINI_MODEL
+            value: "gemini-2.0-flash"
+          ports:
+            - containerPort: 3000
+              name: chat-bot
