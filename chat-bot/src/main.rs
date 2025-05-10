@@ -1,3 +1,4 @@
+use once_cell::sync::Lazy;
 use reqwest as external_reqwest; // ← 明示的に名前変更
 use serde::{Deserialize, Serialize};
 use serenity::{
@@ -10,6 +11,14 @@ use serenity::{
     prelude::*,
 };
 use std::env;
+use std::fs;
+
+static PROMPT_TEMPLATE: Lazy<String> = Lazy::new(|| {
+    fs::read_to_string("/config/prompt_q.md").unwrap_or_else(|_| {
+        eprintln!("⚠️ /config/prompt_q.md が読み込めませんでした。空文字を使用します。");
+        "".to_string()
+    })
+});
 
 #[group]
 #[commands(q)]
@@ -86,6 +95,49 @@ async fn q(ctx: &Context, msg: &Message) -> CommandResult {
     let input = msg.content.trim_start_matches("/q").trim();
     let gemini_api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
     let gemini_model = env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-pro".to_string());
+    let history_limit: usize = env::var("CHAT_HISTORY_LIMIT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3);
+
+    // Botの現在の名前（Discordから取得）
+    let bot_name = ctx.http.get_current_user().await?.name;
+
+    // チャンネル履歴からメッセージ取得
+    let messages = msg
+        .channel_id
+        .messages(&ctx.http, |retriever| {
+            retriever.limit((history_limit + 1) as u64)
+        })
+        .await?
+        .into_iter()
+        .filter(|m| !m.content.starts_with("/q"))
+        .filter(|m| m.id != msg.id)
+        .collect::<Vec<_>>();
+
+    // 履歴を古い順に整列 & Bot の発言には "Bot:" を強制付与
+    let mut history_lines = messages
+        .into_iter()
+        .rev()
+        .map(|m| {
+            let speaker = if m.author.name == bot_name {
+                "Bot"
+            } else {
+                &m.author.name
+            };
+            format!("{}: {}", speaker, m.content.trim())
+        })
+        .collect::<Vec<_>>();
+
+    // 現在の入力も履歴に追加
+    history_lines.push(format!("{}: {}", msg.author.name, input));
+
+    // プロンプトの構成：人格指針 + 会話履歴 + 指示
+    let full_prompt = format!(
+        "{}\n\n以下は直近の会話です：\n{}\n\nBot: ",
+        *PROMPT_TEMPLATE,
+        history_lines.join("\n")
+    );
 
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
@@ -94,9 +146,7 @@ async fn q(ctx: &Context, msg: &Message) -> CommandResult {
 
     let req_body = GeminiRequest {
         contents: vec![GeminiContent {
-            parts: vec![GeminiPart {
-                text: input.to_string(),
-            }],
+            parts: vec![GeminiPart { text: full_prompt }],
         }],
     };
 

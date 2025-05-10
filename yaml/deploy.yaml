@@ -33,6 +33,16 @@ spec:
                 key: discord_token
           - name: GEMINI_MODEL
             value: "gemini-2.0-flash"
+          - name: CHAT_HISTORY_LIMIT
+            value: "5"
           ports:
             - containerPort: 3000
               name: chat-bot
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config
+              readOnly: true
+      volumes:
+        - name: config-volume
+          configMap:
+            name: chat-bot-config
