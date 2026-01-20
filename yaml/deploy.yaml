@@ -32,9 +32,11 @@ spec:
                 name: chat-bot-secrets
                 key: discord_token
           - name: GEMINI_MODEL
-            value: "gemini-2.0-flash"
+            value: "gemini-2.5-flash-lite"
           - name: CHAT_HISTORY_LIMIT
             value: "5"
+          - name: RUST_LOG
+            value: "info"
           ports:
             - containerPort: 3000
               name: chat-bot

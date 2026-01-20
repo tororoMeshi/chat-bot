@@ -4,7 +4,7 @@ set -euo pipefail
 LINT_IMAGE=rust-lint-extended
 
 docker build -t "$LINT_IMAGE" - << 'DOCKERFILE'
-FROM rust:1.86
+FROM rust:1.92
 
 RUN rustup component add rustfmt clippy &&     apt-get update &&     apt-get install -y --no-install-recommends       pkg-config libssl-dev libwebp-dev git curl &&     cargo install cargo-outdated &&     rm -rf /var/lib/apt/lists/*
 DOCKERFILE
