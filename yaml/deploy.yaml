@@ -2,9 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: chat-bot
+  namespace: chat-bot
   labels:
     app: chat-bot
-  namespace: chat-bot
 spec:
   replicas: 1
   selector:
@@ -16,35 +16,32 @@ spec:
         app: chat-bot
     spec:
       containers:
-        - image: tororomeshi/chat-bot:latest
-          name: chat-bot
-          imagePullPolicy: Always
-          tty: true
+        - name: chat-bot
+          image: tororomeshi/chat-bot:SET_IMAGE_TAG
+          imagePullPolicy: IfNotPresent
           env:
-          - name: GEMINI_API_KEY
-            valueFrom:
-              secretKeyRef:
-                name: chat-bot-secrets
-                key: gemini_api_key
-          - name: DISCORD_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: chat-bot-secrets
-                key: discord_token
-          - name: GEMINI_MODEL
-            value: "gemini-2.5-flash-lite"
-          - name: CHAT_HISTORY_LIMIT
-            value: "5"
-          - name: RUST_LOG
-            value: "info"
-          ports:
-            - containerPort: 3000
-              name: chat-bot
-          volumeMounts:
-            - name: config-volume
-              mountPath: /config
-              readOnly: true
-      volumes:
-        - name: config-volume
-          configMap:
-            name: chat-bot-config
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: chat-bot-secrets
+                  key: gemini_api_key
+            - name: DISCORD_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: chat-bot-secrets
+                  key: discord_token
+            - name: GEMINI_MODEL
+              value: "gemini-2.5-flash-lite"
+            - name: ALLOWED_CHANNEL_ID
+              value: "SET_DISCORD_CHANNEL_ID"
+            - name: CHAT_HISTORY_LIMIT
+              value: "5"
+            - name: RUST_LOG
+              value: "info"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

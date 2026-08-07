@@ -1,64 +1,97 @@
 # chat-bot
 
-Discord 向けのチャットボットです。`/q` プレフィックスで入力された内容を Gemini に送信し、会話履歴と設定プロンプトを加味した返信を返します。
+友人同士の小規模なDiscordサーバー向けBotです。Bot専用チャンネルで `/q <質問>` を受け取り、そのチャンネルの直近メッセージと質問をGeminiへ送り、回答をDiscordへ返します。複数サーバー向けの汎用Botではありません。
+
+## 動作とデータの扱い
+
+- `ALLOWED_CHANNEL_ID` で指定した1つのBot専用チャンネルだけで動作します。
+- 指定チャンネルの直近メッセージが会話コンテキストとしてGeminiへ送信されます。機密情報を書き込むチャンネルでは使わないでください。
+- Bot自身はDBなどへ会話履歴を永続保存しません。Discord上の履歴だけを参照するステートレス構成です。
+- ユーザーごとの5秒クールダウンと最大2件の同時実行制限はプロセス内だけで保持します。再起動するとクールダウン状態は消えます。
+- 質問は1,500文字、Discordへの返信は1,900文字までに制限します。
+- GeminiへのHTTPリクエストは約20秒でタイムアウトします。
 
 ## 構成
 
-- `chat-bot/` Rust 実装本体
-- `chat-bot/prompt_q.md` プロンプトテンプレート
-- `yaml/` Kubernetes マニフェスト
-- `create-secret.sh` / `create-configmap.sh` Kubernetes 用の Secret/ConfigMap 作成
-
-## 主要機能
-
-- `/q <質問>` のプレフィックスコマンド
-- 直近の履歴を取得してプロンプトに付与
-- Gemini API からのエラー本文をログ出力
-- 429 の場合はユーザー向けメッセージを送信
+- `chat-bot/`: Rust実装、Dockerfile、バイナリへ埋め込むプロンプト
+- `yaml/deploy.yaml`: Kubernetes Deployment
+- `create-secret.sh`: `.env.secret` からKubernetes Secretをapplyするスクリプト
 
 ## 必要な環境変数
 
-- `DISCORD_TOKEN` Discord Bot トークン
-- `GEMINI_API_KEY` Gemini API キー
-- `GEMINI_MODEL` Gemini モデル名（未設定時は `gemini-pro`）
-- `CHAT_HISTORY_LIMIT` 履歴の取得件数（未設定時は `3`）
-- `RUST_LOG` ログレベル（例: `info`）
+すべて起動時に必須です。未設定、空文字、不正値の場合は起動に失敗します。コードとマニフェストにモデル名の暗黙デフォルトはありません。
+
+| 変数 | 内容 |
+| --- | --- |
+| `DISCORD_TOKEN` | Discord Botトークン |
+| `GEMINI_API_KEY` | Gemini APIキー |
+| `GEMINI_MODEL` | 利用するGeminiモデル名 |
+| `ALLOWED_CHANNEL_ID` | Botの利用を許可するDiscordチャンネルID（1件） |
+| `CHAT_HISTORY_LIMIT` | Geminiへ渡す履歴件数（1〜20） |
+| `RUST_LOG` | ログフィルター（例: `info`） |
 
 ## ローカル実行
+
+リポジトリ直下の `.env`、またはシェル環境へ必要な値を設定します。
+
+```dotenv
+DISCORD_TOKEN=replace_me
+GEMINI_API_KEY=replace_me
+GEMINI_MODEL=gemini-2.5-flash-lite
+ALLOWED_CHANNEL_ID=123456789012345678
+CHAT_HISTORY_LIMIT=5
+RUST_LOG=info
+```
 
 ```bash
 cd chat-bot
 cargo run
 ```
 
-## Lint
+Discord Developer PortalではMessage Content Intentを有効にし、Botには対象チャンネルの閲覧、履歴閲覧、メッセージ送信に必要な権限だけを付与してください。
 
-`chat-bot/lint.sh` は Docker 上で `fmt`/`clippy`/`outdated` と Trivy を実行します。
-
-```bash
-cd chat-bot
-./lint.sh
-```
-
-## Docker ビルド
+## Format、Lint、テスト
 
 ```bash
 cd chat-bot
-docker build -t tororomeshi/chat-bot:latest .
+cargo fmt --check
+cargo check
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
 ```
 
-## Kubernetes デプロイ
+`chat-bot/lint.sh` はDocker上でfmt、check、test、clippyを実行し、その後にTrivyによるイメージスキャンを行います。
 
-Secret と ConfigMap を用意してから `yaml/deploy.yaml` を適用します。
+## Dockerビルド
+
+`latest` は使わず、GitコミットSHAやリリース番号など変更しないタグを指定します。
 
 ```bash
+cd chat-bot
+IMAGE_TAG=$(git rev-parse --short HEAD)
+docker build -t "tororomeshi/chat-bot:${IMAGE_TAG}" .
+```
+
+Docker Hubへ送る場合も固定タグを明示します。スクリプトは `latest` を作成しません。
+
+```bash
+./push_to_dockerhub.sh "$IMAGE_TAG"
+```
+
+`chat-bot/prompt_q.md` は `include_str!` でバイナリへ埋め込まれます。プロンプトを変更した場合はイメージを再ビルドしてください。
+
+## Kubernetesデプロイ
+
+1. namespaceを用意します。
+2. `./generate-env.sh` などでGit管理外の `.env.secret` に `GEMINI_API_KEY` と `DISCORD_TOKEN` を設定します。
+3. `./create-secret.sh` を実行します。既存Secretも削除せずapplyで更新されます。
+4. `yaml/deploy.yaml` の `SET_IMAGE_TAG` をDockerで付けた固定タグへ、`SET_DISCORD_CHANNEL_ID` をBot専用チャンネルIDへ置換します。必要なら `GEMINI_MODEL` と `CHAT_HISTORY_LIMIT` も更新します。
+5. Deploymentを適用します。
+
+```bash
+kubectl create namespace chat-bot
 ./create-secret.sh
-./create-configmap.sh
 kubectl apply -f yaml/deploy.yaml
 ```
 
-`yaml/deploy.yaml` の `GEMINI_MODEL` を環境に合わせて変更してください。
-
-## トラブルシューティング
-
-- `Gemini returned an error status: 429` が出る場合は Gemini のクォータ超過です。時間をおいて再試行するか、プランとクォータを確認してください。
+このBotはHTTPサーバーを持たないため、Service、containerPort、HTTPヘルスチェックは不要です。

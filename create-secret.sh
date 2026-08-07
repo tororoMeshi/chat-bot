@@ -1,31 +1,31 @@
-#!/bin/bash
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
-NAMESPACE=chat-bot
-SECRET_NAME=chat-bot-secrets
+NAMESPACE="chat-bot"
+SECRET_NAME="chat-bot-secrets"
+ENV_FILE=".env.secret"
 
-# .env.secret が存在しない場合は終了
-if [ ! -f .env.secret ]; then
-  echo ".env.secret ファイルが見つかりません"
+if [ ! -f "$ENV_FILE" ]; then
+  echo "❌ $ENV_FILE が見つかりません"
   exit 1
 fi
 
-# .env.secret を読み込み
-if ! source .env.secret; then
-  echo "❌ .env.secret の読み込みに失敗しました"
-  exit 1
-fi
+set -a
+# shellcheck disable=SC1090
+. "./$ENV_FILE"
+set +a
 
 if [ -z "${GEMINI_API_KEY:-}" ] || [ -z "${DISCORD_TOKEN:-}" ]; then
-  echo "❌ GEMINI_API_KEY または DISCORD_TOKEN が未設定です"
+  echo "❌ GEMINI_API_KEY と DISCORD_TOKEN を $ENV_FILE に設定してください"
   exit 1
 fi
 
-# Secret 作成または更新
-kubectl delete secret "$SECRET_NAME" -n "$NAMESPACE" --ignore-not-found
 kubectl create secret generic "$SECRET_NAME" \
   --from-literal=gemini_api_key="$GEMINI_API_KEY" \
   --from-literal=discord_token="$DISCORD_TOKEN" \
-  -n "$NAMESPACE"
+  --namespace="$NAMESPACE" \
+  --dry-run=client \
+  -o yaml |
+  kubectl apply -f -
 
-echo "✅ Secret '$SECRET_NAME' が namespace '$NAMESPACE' に作成されました"
+echo "✅ Secret '$SECRET_NAME' を namespace '$NAMESPACE' に反映しました"

@@ -11,6 +11,3 @@ generate-env:
 
 update-git-excludes:
 	bash update-git-excludes.sh
-
-create-configmap:
-	bash create-configmap.sh

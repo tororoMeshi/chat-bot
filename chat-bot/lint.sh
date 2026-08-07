@@ -6,15 +6,17 @@ LINT_IMAGE=rust-lint-extended
 docker build -t "$LINT_IMAGE" - << 'DOCKERFILE'
 FROM rust:1.92
 
-RUN rustup component add rustfmt clippy &&     apt-get update &&     apt-get install -y --no-install-recommends       pkg-config libssl-dev libwebp-dev git curl &&     cargo install cargo-outdated &&     rm -rf /var/lib/apt/lists/*
+RUN rustup component add rustfmt clippy &&     apt-get update &&     apt-get install -y --no-install-recommends       pkg-config libssl-dev libwebp-dev &&     rm -rf /var/lib/apt/lists/*
 DOCKERFILE
 
-docker run --rm   -v "$PWD":/usr/src/app   -w /usr/src/app   "$LINT_IMAGE" bash -c "
-    cargo fmt --all &&
-    cargo check &&
-    cargo clippy -- -D warnings &&
-    cargo outdated || true
-  "
+docker run --rm   -v "$PWD":/usr/src/app   -w /usr/src/app   -e CARGO_TARGET_DIR=/tmp/chat-bot-target   "$LINT_IMAGE" bash -c '
+  set -eu
+
+  cargo fmt --all --check
+  cargo check
+  cargo test
+  cargo clippy --all-targets --all-features -- -D warnings
+  '
 
 APP_IMAGE="tororomeshi/chat-bot"
 docker build -t "${APP_IMAGE}:lint-temp" .
